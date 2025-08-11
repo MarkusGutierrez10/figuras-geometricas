@@ -51,7 +51,9 @@ class App:
 
         Button(root, text="📂 Cargar Imagen", command=self.cargar_imagen, **style).pack(pady=5)
         Button(root, text="📸 Cámara en Tiempo Real", command=self.usar_camara, **style).pack(pady=5)
+        Button(root, text="🎥 Video en Tiempo Real", command=self.figurasVideos, **style).pack(pady=5)
         Button(root, text="❌ Salir", command=root.quit, bg="#ff4e4e", fg="white", activebackground="#c93d3d", font=("Helvetica", 11, "bold")).pack(pady=15)
+
 
     def cargar_imagen(self):
         path = filedialog.askopenfilename(filetypes=[("Imagen", "*.png *.jpg *.jpeg *.bmp")])
@@ -129,7 +131,77 @@ class App:
         self.label.configure(image=img_tk)
         self.label.image = img_tk
 
+    def figurasVideos(self):
+        print("hola mundo")
+        #de aqui
+        cap = cv2.VideoCapture(0)  # 0 es la cámara por defecto
+        sd = ShapeDetector()
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Redimensionar
+            resized = imutils.resize(frame, width=400)
+            ratio = frame.shape[0] / float(resized.shape[0])
+
+            # Escala de grises + desenfoque
+            gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # Detección del fondo
+            white_pixels = np.sum(blurred > 200)
+            black_pixels = np.sum(blurred < 50)
+            inverted = False
+
+            if white_pixels > black_pixels:
+                thresh = cv2.adaptiveThreshold(
+                    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    cv2.THRESH_BINARY_INV, 11, 3
+                )
+                inverted = True
+            else:
+                _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)
+
+            text_color = (0, 0, 0) if inverted else (255, 255, 255)
+
+            # Contornos
+            cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = imutils.grab_contours(cnts)
+
+            for c in cnts:
+                M = cv2.moments(c)
+                if M["m00"] == 0:
+                    continue
+
+                cX = int((M["m10"] / M["m00"]) * ratio)
+                cY = int((M["m01"] / M["m00"]) * ratio)
+
+                shape = sd.detect(c)
+
+                c = c.astype("float")
+                c *= ratio
+                c = c.astype("int")
+
+                cv2.drawContours(frame, [c], -1, (0, 255, 0), 2)
+                cv2.putText(frame, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+
+            # Mostrar la imagen
+            cv2.imshow("Detección de Figuras", frame)
+
+            # Salir con la tecla 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        # ------------------------- Cierre -------------------------
+        #cap.release()
+        #cv2.destroyAllWindows()
+        #hasta aqui
+
 if __name__ == "__main__":
     root = Tk()
     app = App(root)
+    root.geometry("700x700")
     root.mainloop()
+
