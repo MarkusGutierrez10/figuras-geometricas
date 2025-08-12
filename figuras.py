@@ -16,7 +16,11 @@ class ShapeDetector:
             (x, y, w, h) = cv2.boundingRect(approx)
             ar = w / float(h)
             shape = "Cuadrado" if 0.95 <= ar <= 1.05 else "Rectangulo"
-        elif len(approx) > 4:
+        elif len(approx) == 5:
+            shape = "Pentagono"
+        elif len(approx) == 6:
+            shape = "Hexagono"
+        elif len(approx) > 6:
             shape = "Circulo"
         return shape
 
@@ -75,50 +79,62 @@ class App:
 
     def procesar_imagen(self, image):
         sd = ShapeDetector()
+        #aqui
         resized = imutils.resize(image, width=300)
         ratio = image.shape[0] / float(resized.shape[0])
 
+        # Escala de grises + desenfoque
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)[1]
+
+        # ------------------------- Detección del fondo -------------------------
+
+        # Calcular cantidad de píxeles blancos y negros
+        white_pixels = np.sum(blurred > 200)
+        black_pixels = np.sum(blurred < 50)
+
+        # Determinar tipo de fondo y aplicar umbral adecuado
+        inverted = False
+        if white_pixels > black_pixels:
+            thresh = cv2.adaptiveThreshold(
+                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV, 11, 3
+            )
+            inverted = True
+        else:
+            _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)
+
+        # Color del texto según el fondo
+        text_color = (0, 0, 0) if inverted else (255, 255, 255)
+
+        # ------------------------- Detección de contornos y formas -------------------------
 
         cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = imutils.grab_contours(cnts)
 
-        resumen = {"Triangulo": 0, "Cuadrado": 0, "Rectangulo": 0, "Circulo": 0}
+        sd = ShapeDetector()
 
         for c in cnts:
             M = cv2.moments(c)
             if M["m00"] == 0:
                 continue
+
             cX = int((M["m10"] / M["m00"]) * ratio)
             cY = int((M["m01"] / M["m00"]) * ratio)
 
-            c_scaled = c.astype("float")
-            c_scaled *= ratio
-            c_scaled = c_scaled.astype("int")
+            shape = sd.detect(c)
 
-            shape = sd.detect(c_scaled)
-            resumen[shape] += 1
+            c = c.astype("float")
+            c *= ratio
+            c = c.astype("int")
 
-            cv2.drawContours(image, [c_scaled], -1, (0, 255, 0), 2)
+            cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
+            cv2.putText(image, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, text_color, 2)
 
-            if shape == "Circulo":
-                radio = sd.obtener_radio(c_scaled)
-                texto = f"{shape} (r={radio})"
-            else:
-                lados = sd.obtener_lados(c_scaled)
-                texto = f"{shape} L:{lados}"
+        # ------------------------- Mostrar imagen final -------------------------
 
-            cv2.putText(image, texto, (cX - 50, cY),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-
-        # Agregar resumen a la imagen (esquina superior izquierda)
-        y0 = 20
-        for forma, cantidad in resumen.items():
-            txt = f"{forma}: {cantidad}"
-            cv2.putText(image, txt, (10, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            y0 += 25
+        #aqui
 
         self.mostrar_resultado(image)
 
@@ -132,8 +148,6 @@ class App:
         self.label.image = img_tk
 
     def figurasVideos(self):
-        print("hola mundo")
-        #de aqui
         cap = cv2.VideoCapture(0)  # 0 es la cámara por defecto
         sd = ShapeDetector()
 
